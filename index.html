@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>垂直飛び測定器</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            text-align: center;
+            background-color: #222;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            touch-action: manipulation;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        #height-display {
+            font-size: 80px;
+            font-weight: bold;
+            color: #00ffcc;
+            margin: 20px 0;
+        }
+
+        .unit {
+            font-size: 30px;
+            color: #888;
+        }
+
+        #status {
+            font-size: 18px;
+            color: #aaa;
+            height: 30px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            background-color: #444;
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        button:active {
+            background-color: #666;
+        }
+
+        .debug {
+            font-size: 12px;
+            color: #555;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>垂直飛び測定</h1>
+    <div id="status">準備完了</div>
+
+    <div>
+        <span id="height-display">0.0</span>
+        <span class="unit">cm</span>
+    </div>
+
+    <button id="start-btn" onclick="requestPermission()">測定スタート</button>
+
+    <div class="debug" id="debug-info">加速度: 0</div>
+
+    <script>
+        let isMeasuring = false;
+        let inAir = false;
+        let flightStartTime = 0;
+        let maxFlightTime = 0;
+
+        const STATUS = document.getElementById('status');
+        const DISPLAY = document.getElementById('height-display');
+        const DEBUG = document.getElementById('debug-info');
+        const BTN = document.getElementById('start-btn');
+
+        // iOS13+のためのセンサー許可リクエスト
+        function requestPermission() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            startSensor();
+                        } else {
+                            alert("センサーの使用が許可されませんでした");
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Androidなどはそのまま開始
+                startSensor();
+            }
+        }
+
+        function startSensor() {
+            window.addEventListener('devicemotion', handleMotion);
+            BTN.style.display = 'none'; // ボタンを隠す
+            STATUS.innerText = "スマホを持ってジャンプ！";
+            isMeasuring = true;
+        }
+
+        function handleMotion(event) {
+            if (!isMeasuring) return;
+
+            // X, Y, Z の加速度を取得（重力加速度を含む）
+            let acc = event.accelerationIncludingGravity;
+            if (!acc) return;
+
+            // 合成加速度ベクトルを計算 (ピタゴラスの定理)
+            let magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+
+            DEBUG.innerText = `加速度: ${magnitude.toFixed(2)}`;
+
+            // 判定ロジック
+            // 1. 自由落下 (空中にいる) 判定: 重力(約9.8)がなくなり、0に近づく
+            if (magnitude < 3.0 && !inAir) {
+                inAir = true;
+                flightStartTime = Date.now();
+                STATUS.innerText = "ジャンプ中...";
+                STATUS.style.color = "yellow";
+            }
+
+            // 2. 着地判定: 地面につくと強い衝撃（G）がかかる
+            if (magnitude > 18.0 && inAir) {
+                let flightEndTime = Date.now();
+                let duration = (flightEndTime - flightStartTime) / 1000; // 秒に変換
+
+                // あまりに短い/長い時間はノイズとして除外 (0.1秒〜1.5秒)
+                if (duration > 0.1 && duration < 1.5) {
+                    calculateHeight(duration);
+                } else {
+                    STATUS.innerText = "エラー：再計測してください";
+                    STATUS.style.color = "red";
+                }
+
+                inAir = false;
+            }
+        }
+
+        function calculateHeight(time) {
+            // 物理公式: h = 1/8 * g * t^2
+            // g = 9.80665, 結果をcmにするので * 100
+            // 係数は 約 122.6
+
+            let height = 122.6 * Math.pow(time, 2);
+
+            DISPLAY.innerText = height.toFixed(1);
+            STATUS.innerText = `滞空時間: ${time.toFixed(3)}秒`;
+            STATUS.style.color = "#00ffcc";
+        }
+    </script>
+</body>
+
+</html>
