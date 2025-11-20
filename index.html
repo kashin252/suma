@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>垂直跳び測定 </title>
+    <title>垂直飛び測定 (デュアルフィルタ + 波形表示)</title>
     <style>
         :root {
             --primary: #007AFF;
@@ -273,7 +273,7 @@
 <div class="card">
     <div class="card-header">
         <h1>垂直飛び測定</h1>
-        <div class="badge">v2.0 High Precision</div>
+        <div class="badge">v3.0 Dual-Filter</div>
     </div>
 
     <div id="status">スタートボタンを押して下さい</div>
@@ -282,7 +282,7 @@
         <span id="height-display">0.0</span>
         <span class="unit">cm</span>
     </div>
-    <div class="sub-label">飛行時間から物理計算で高さを推定</div>
+    <div class="sub-label">沈み込み → 離陸 → 着地を検出して高さを計算</div>
 
     <div style="text-align:center;">
         <button onclick="initApp()" id="btn">
@@ -305,8 +305,8 @@
 
     <div class="wave-wrapper">
         <div class="wave-header">
-            <span>加速度波形（フィルタ後）</span>
-            <span>スマホは胸の前でしっかり固定</span>
+            <span>加速度波形（高速フィルタ後）</span>
+            <span>胸の前でスマホをしっかり固定してジャンプ</span>
         </div>
         <canvas id="waveCanvas" width="640" height="200"></canvas>
         <div class="legend">
@@ -317,32 +317,46 @@
                 <span class="legend-dot base"></span> 静止時(重力)
             </div>
             <div class="legend-item">
-                <span class="legend-dot th"></span> 離地/着地しきい値
+                <span class="legend-dot th"></span> 閾値(沈み込み/離陸/着地)
             </div>
         </div>
-        <div class="hint">※ 波形が大きく谷→山になっているときにジャンプが検出されています</div>
+        <div class="hint">※ 谷(沈み込み) → 谷から急降下(離陸) → 山(着地) が1ジャンプです</div>
     </div>
 </div>
 
 <script>
     // ====== 状態管理・物理パラメータ ======
-    let state = "idle"; // idle, calibrating, ready, inAir, waitNext
-    let baselineG = 9.8;
-    let filteredMag = 9.8;
-    let takeoffTime = 0;
-    let lastLandingTime = 0;
+    // 状態: idle, calibrating, ready, sinking, airborne, waitNext
+    let state = "idle";
+
+    let baselineG = 9.8;   // 低速フィルタで安定化させる重力値
+    let fastMag = 9.8;     // 高速フィルタ値（急変化用）
+    let slowMag = 9.8;     // 低速フィルタ値（ベースライン用）
+
+    let sinkStartTime = 0; // 沈み込み開始時刻
+    let takeoffTime = 0;   // 離陸時刻
+
     let calibrationSamples = [];
     let motionInitialized = false;
 
-    // 閾値（baselineGベースで後から決定）
-    let takeoffThreshold = 5.0;
-    let landingThreshold = 13.0;
+    // デュアルフィルタ係数
+    const FAST_ALPHA = 0.6;   // 高速フィルタ（変化をよく追う）
+    const SLOW_ALPHA = 0.85;  // 低速フィルタ（ベースライン安定）
 
-    const ALPHA = 0.8; // ローパスフィルタ係数
+    // 閾値（baselineGから動的に決定）
+    let sinkThreshold = baselineG * 1.15;   // 沈み込み
+    let takeoffThreshold = baselineG * 0.5; // 離陸（ほぼ無重力）
+    let landingThreshold = baselineG * 1.4; // 着地衝撃
+
+    function updateThresholds() {
+        sinkThreshold = baselineG * 1.15;
+        takeoffThreshold = baselineG * 0.5;
+        landingThreshold = baselineG * 1.4;
+    }
 
     // ====== 波形描画用 ======
     const MAX_POINTS = 200;
-    let waveData = []; // filteredMagの履歴
+    let waveData = []; // fastMag の履歴
 
     function initApp() {
         // 音声初期化（iOS対策）
@@ -397,14 +411,14 @@
             baselineG = 9.8;
         }
 
-        filteredMag = baselineG;
-
-        takeoffThreshold = baselineG * 0.6; // 下に大きく谷→離地
-        landingThreshold = baselineG * 1.3; // 上に大きく山→着地
+        // フィルタ初期値もベースラインに合わせる
+        fastMag = baselineG;
+        slowMag = baselineG;
+        updateThresholds();
 
         state = "ready";
         document.getElementById('status').innerText =
-            "準備完了！スマホを胸の前で固定してジャンプしてください";
+            "準備完了！スマホを胸の前で固定して、沈み込んでからジャンプしてください";
     }
 
     function onMotion(e) {
@@ -416,37 +430,76 @@
         const az = acc.z || 0;
 
         const mag = Math.sqrt(ax*ax + ay*ay + az*az);
-        filteredMag = ALPHA * filteredMag + (1 - ALPHA) * mag;
 
-        // 波形用データ更新
-        waveData.push(filteredMag);
-        if (waveData.length > MAX_POINTS) waveData.shift();
-        drawWaveform();
+        // デュアルフィルタ
+        fastMag = FAST_ALPHA * fastMag + (1 - FAST_ALPHA) * mag;
+        slowMag = SLOW_ALPHA * slowMag + (1 - SLOW_ALPHA) * mag;
 
+        // キャリブレーション中はサンプルを貯める
         if (state === "calibrating") {
             calibrationSamples.push(mag);
             if (calibrationSamples.length >= 40) {
                 finishCalibration();
             }
-            return;
+        } else {
+            // キャリブレーション後は、slowMag をベースラインとして更新
+            baselineG = slowMag;
+            updateThresholds();
         }
+
+        // 波形用データ更新（高速フィルタ値）
+        waveData.push(fastMag);
+        if (waveData.length > MAX_POINTS) waveData.shift();
+        drawWaveform();
+
+        // 状態機械でジャンプ検出（calibrating中はここ以降スキップ）
+        if (state === "calibrating") return;
 
         const now = performance.now();
 
         if (state === "ready") {
-            if (filteredMag < takeoffThreshold) {
-                state = "inAir";
-                takeoffTime = now;
-                document.getElementById('status').innerText = "空中検出中...";
+            // 沈み込み検出：baselineより少し大きくなる
+            if (fastMag > sinkThreshold) {
+                state = "sinking";
+                sinkStartTime = now;
+                document.getElementById('status').innerText =
+                    "沈み込み検出中... そのまま素早くジャンプ！";
             }
-        } else if (state === "inAir") {
-            if (filteredMag > landingThreshold) {
-                const flightTime = (now - takeoffTime) / 1000;
+        } else if (state === "sinking") {
+            const sinkElapsed = (now - sinkStartTime) / 1000; // 秒
 
+            // 離陸検出：沈み込み後、急に小さくなって無重力状態
+            if (fastMag < takeoffThreshold) {
+                // 沈み込み → 離陸 までの時間が 0.1〜0.8秒なら有効
+                if (sinkElapsed >= 0.1 && sinkElapsed <= 0.8) {
+                    state = "airborne";
+                    takeoffTime = now;
+                    document.getElementById('status').innerText = "空中検出中...";
+                } else {
+                    // 不自然なタイミングはノーカウント
+                    state = "ready";
+                    document.getElementById('status').innerText =
+                        "ジャンプ動作として認識されませんでした。もう一度お願いします";
+                }
+            } else {
+                // 一定時間たっても離陸しない場合はリセット
+                if (sinkElapsed > 0.9 && fastMag < sinkThreshold * 0.98) {
+                    state = "ready";
+                    document.getElementById('status').innerText =
+                        "ジャンプになっていない動きと判断しました。もう一度お願いします";
+                }
+            }
+        } else if (state === "airborne") {
+            // 着地検出：baselineよりかなり大きくなる
+            if (fastMag > landingThreshold) {
+                const flightTime = (now - takeoffTime) / 1000; // 秒
+
+                // 異常値を除外（短すぎ / 長すぎ）
                 if (flightTime > 0.15 && flightTime < 1.5) {
                     const sliderRate =
                         Number(document.getElementById('slider').value) / 100;
 
+                    // 物理式：h(cm) ≒ 122.6 * t^2
                     let h = 122.6 * flightTime * flightTime * sliderRate;
 
                     document.getElementById('height-display').innerText = h.toFixed(1);
@@ -456,7 +509,6 @@
                     );
                     window.speechSynthesis.speak(ut);
 
-                    lastLandingTime = now;
                     state = "waitNext";
                     document.getElementById('status').innerText =
                         "計測完了！ 1～2秒後に次のジャンプが測定できます";
@@ -464,7 +516,7 @@
                     setTimeout(() => {
                         state = "ready";
                         document.getElementById('status').innerText =
-                            "準備OK！ もう一度ジャンプしてください";
+                            "準備OK！ もう一度沈み込んでからジャンプしてください";
                     }, 1500);
                 } else {
                     state = "ready";
@@ -492,7 +544,6 @@
 
         const minVal = baselineG * 0.2;
         const maxVal = baselineG * 2.0;
-
         const range = Math.max(maxVal - minVal, 0.001);
 
         function yFromVal(v) {
@@ -500,29 +551,36 @@
             return h - (marginBottom + (h - marginTop - marginBottom) * ratio);
         }
 
-        // 背景グリッド
+        // 背景グリッド＆基準線
         ctx.save();
-        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
 
         // baseline
+        ctx.strokeStyle = "rgba(74, 222, 128, 0.6)";
         const baseY = yFromVal(baselineG);
         ctx.beginPath();
         ctx.moveTo(0, baseY);
         ctx.lineTo(w, baseY);
         ctx.stroke();
 
-        // takeoff / landing threshold
-        ctx.strokeStyle = "rgba(249, 115, 22, 0.5)";
-        const toY = yFromVal(takeoffThreshold);
-        const laY = yFromVal(landingThreshold);
+        // 沈み込みしきい値
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.45)";
+        const sinkY = yFromVal(sinkThreshold);
+        ctx.beginPath();
+        ctx.moveTo(0, sinkY);
+        ctx.lineTo(w, sinkY);
+        ctx.stroke();
 
+        // 離陸しきい値
+        const toY = yFromVal(takeoffThreshold);
         ctx.beginPath();
         ctx.moveTo(0, toY);
         ctx.lineTo(w, toY);
         ctx.stroke();
 
+        // 着地しきい値
+        const laY = yFromVal(landingThreshold);
         ctx.beginPath();
         ctx.moveTo(0, laY);
         ctx.lineTo(w, laY);
@@ -530,7 +588,7 @@
 
         ctx.restore();
 
-        // 波形本体
+        // 波形本体（高速フィルタ後）
         ctx.save();
         ctx.lineWidth = 2;
         const grad = ctx.createLinearGradient(0, 0, w, 0);
