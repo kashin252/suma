@@ -2,247 +2,99 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>垂直飛び測定器 Ver.3 (精度調整版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>垂直飛び測定 (白背景版)</title>
     <style>
+        /* 背景を白、文字を黒に強制設定 */
         body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: sans-serif;
             text-align: center;
-            background-color: #1a1a1a;
-            color: #fff;
+            background-color: #ffffff; /* 白背景 */
+            color: #000000; /* 黒文字 */
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            touch-action: manipulation; /* ダブルタップ拡大防止 */
-        }
-        h1 { font-size: 18px; color: #888; margin: 0 0 20px 0; }
-        
-        /* メイン表示部 */
-        .result-box {
-            background: #333;
-            padding: 20px;
-            border-radius: 20px;
-            width: 80%;
-            max-width: 300px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         #height-display {
-            font-size: 70px;
-            font-weight: 800;
-            color: #00ffcc;
-            line-height: 1;
-        }
-        .unit { font-size: 24px; color: #aaa; }
-        #time-display { font-size: 14px; color: #666; margin-top: 5px; }
-
-        /* ステータス表示 */
-        #status {
-            font-size: 20px;
+            font-size: 80px;
             font-weight: bold;
-            color: #fff;
-            height: 30px;
-            margin-bottom: 20px;
+            color: #007AFF; /* 青色 */
         }
-
-        /* 操作ボタン */
         button {
-            padding: 15px 50px;
-            font-size: 18px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #007AFF, #0055ff);
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0, 100, 255, 0.4);
+            padding: 20px 40px;
+            font-size: 20px;
+            background-color: #000;
+            color: #fff;
+            border-radius: 10px;
+            margin-top: 20px;
         }
-        button:active { transform: scale(0.96); opacity: 0.9; }
-
-        /* 補正スライダーエリア */
-        .calibration-area {
-            margin-top: 40px;
-            padding: 15px;
-            background: #2a2a2a;
-            border-radius: 15px;
-            width: 80%;
-            max-width: 300px;
-        }
-        .calib-label { font-size: 12px; color: #aaa; display: flex; justify-content: space-between;}
-        input[type=range] {
-            width: 100%;
-            margin: 10px 0;
-            accent-color: #00ffcc;
-        }
-        .hint { font-size: 11px; color: #666; text-align: left; }
-
-        .debug { 
-            position: fixed; 
-            bottom: 10px; 
-            font-size: 10px; 
-            color: #444; 
-            font-family: monospace; 
-        }
-    </script>
+        .slider-area { margin-top: 30px; width: 80%; background: #eee; padding: 10px; }
+        input { width: 100%; }
+    </style>
 </head>
 <body>
 
-    <h1>垂直飛び測定 Ver.3</h1>
+    <h1>垂直飛び測定 (白背景)</h1>
+    <div id="status">準備完了</div>
 
-    <div id="status">準備OK</div>
-
-    <div class="result-box">
-        <div>
-            <span id="height-display">0.0</span>
-            <span class="unit">cm</span>
-        </div>
-        <div id="time-display">滞空時間: 0.000秒</div>
+    <div>
+        <span id="height-display">0.0</span> cm
     </div>
 
-    <button id="start-btn" onclick="initApp()">計測スタート</button>
+    <button onclick="initApp()" id="btn">スタート</button>
 
-    <div class="calibration-area">
-        <div class="calib-label">
-            <span>数値が高い</span>
-            <span>補正: <span id="calib-val">90</span>%</span>
-            <span>数値が低い</span>
-        </div>
-        <input type="range" id="correction" min="60" max="120" value="90" oninput="updateCalibrationDisplay()">
-        <div class="hint">
-            ※膝を柔らかく着地する人は左（数値を下げる）へ。<br>
-            ※足を伸ばして着地する人は右へ。
-        </div>
+    <div class="slider-area">
+        精度調整: <span id="val">90</span>%<br>
+        <input type="range" id="slider" min="60" max="120" value="90" oninput="document.getElementById('val').innerText=this.value">
     </div>
-
-    <div class="debug" id="debug-info">ACC: 0.0</div>
 
     <script>
-        let isMeasuring = false;
-        let inAir = false;
-        let flightStartTime = 0;
-        let filteredAcc = 9.8;
-        const ALPHA = 0.6; // フィルタ係数（少し敏感に修正）
+        let isMeasuring = false, inAir = false, startT = 0, filtered = 9.8;
         
-        // DOM要素
-        const STATUS = document.getElementById('status');
-        const H_DISPLAY = document.getElementById('height-display');
-        const T_DISPLAY = document.getElementById('time-display');
-        const DEBUG = document.getElementById('debug-info');
-        const BTN = document.getElementById('start-btn');
-        const SLIDER = document.getElementById('correction');
-        const CALIB_VAL = document.getElementById('calib-val');
-
-        function updateCalibrationDisplay() {
-            CALIB_VAL.innerText = SLIDER.value;
-        }
-
         function initApp() {
-            // iOS対応: ユーザー操作で音声を一度アンロック
-            speak(" "); 
-            
+            // 音声用ハック
+            let ut = new SpeechSynthesisUtterance(" "); window.speechSynthesis.speak(ut);
+
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
-                DeviceMotionEvent.requestPermission()
-                    .then(state => {
-                        if (state === 'granted') startSensor();
-                        else alert("センサーを許可してください");
-                    })
-                    .catch(console.error);
-            } else {
-                startSensor();
-            }
+                DeviceMotionEvent.requestPermission().then(s => {
+                    if(s==='granted') start();
+                    else alert("センサーを許可してください");
+                });
+            } else { start(); }
         }
 
-        function startSensor() {
-            window.addEventListener('devicemotion', handleMotion);
-            BTN.style.display = 'none';
-            STATUS.innerText = "静止してください...";
-            
-            // 3秒カウントダウン後に計測開始（誤作動防止）
-            setTimeout(() => {
-                isMeasuring = true;
-                STATUS.innerText = "ジャンプ！";
-                STATUS.style.color = "#00ffcc";
-                speak("ジャンプ！");
-            }, 1000);
-        }
+        function start() {
+            window.addEventListener('devicemotion', e => {
+                if(!isMeasuring) return;
+                let acc = e.accelerationIncludingGravity;
+                if(!acc) return;
+                
+                let raw = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
+                filtered = filtered * 0.4 + raw * 0.6;
 
-        function handleMotion(event) {
-            if (!isMeasuring) return;
-
-            let acc = event.accelerationIncludingGravity;
-            if (!acc) return;
-
-            // 合成加速度
-            let raw = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-            
-            // ローパスフィルタ
-            filteredAcc = filteredAcc * (1 - ALPHA) + raw * ALPHA;
-            
-            DEBUG.innerText = `G: ${filteredAcc.toFixed(2)}`;
-
-            // --- 判定ロジック (厳格化) ---
-
-            // 1. 離陸判定 (無重力状態)
-            // 以前は < 4.0 でしたが、しゃがみ込みの誤検知を防ぐため < 2.5 に厳格化
-            if (filteredAcc < 2.5 && !inAir) {
-                inAir = true;
-                flightStartTime = Date.now();
-                STATUS.innerText = "飛んでいます";
-                STATUS.style.color = "yellow";
-            }
-
-            // 2. 着地判定
-            // 強い衝撃(16Gとか)を待つと遅れるため、重力が戻った時点(>8.0)から着地とみなすロジックへ変更
-            // ただし、一瞬のノイズを除くため、ある程度の強さは必要
-            if (filteredAcc > 8.0 && inAir) {
-                let now = Date.now();
-                let duration = (now - flightStartTime) / 1000;
-
-                // 時間フィルタ (0.15秒未満のノイズは無視、1.2秒以上の異常値も無視)
-                if (duration > 0.15 && duration < 1.2) {
-                    finishMeasurement(duration);
-                } else if (duration > 1.2) {
-                    // エラーリセット
-                    inAir = false;
-                    STATUS.innerText = "エラー：長すぎます";
+                // 判定
+                if(filtered < 2.5 && !inAir) { inAir=true; startT=Date.now(); document.getElementById('status').innerText="計測中..."; }
+                
+                if(filtered > 8.0 && inAir) {
+                    let t = (Date.now()-startT)/1000;
+                    if(t > 0.15 && t < 1.5) {
+                        let h = 122.6 * t * t * (document.getElementById('slider').value / 100);
+                        document.getElementById('height-display').innerText = h.toFixed(1);
+                        let ut = new SpeechSynthesisUtterance(h.toFixed(0)+"センチ");
+                        window.speechSynthesis.speak(ut);
+                        isMeasuring = false; inAir = false;
+                        document.getElementById('status').innerText="完了 (2秒後に再開)";
+                        document.getElementById('btn').style.display = 'inline-block';
+                        setTimeout(() => { isMeasuring=true; document.getElementById('status').innerText="ジャンプ！"; }, 2000);
+                    }
                 }
-            }
-        }
-
-        function finishMeasurement(time) {
-            isMeasuring = false;
-            inAir = false;
-
-            // 物理計算: h = 122.6 * t^2
-            let rawHeight = 122.6 * Math.pow(time, 2);
-
-            // ★補正係数の適用
-            // スライダーの値 (例: 90) をパーセントとして掛ける
-            let correctionFactor = parseInt(SLIDER.value) / 100;
-            let finalHeight = rawHeight * correctionFactor;
-
-            H_DISPLAY.innerText = finalHeight.toFixed(1);
-            T_DISPLAY.innerText = `滞空: ${time.toFixed(3)}秒 (補正率${SLIDER.value}%)`;
-            STATUS.innerText = "計測完了";
-            STATUS.style.color = "#fff";
-
-            speak(finalHeight.toFixed(0) + "センチ");
-
-            // 連続計測防止のため少し待機
-            setTimeout(() => {
-                isMeasuring = true;
-                STATUS.innerText = "次のジャンプへ";
-                STATUS.style.color = "#00ffcc";
-            }, 2500);
-        }
-
-        function speak(text) {
-            const ut = new SpeechSynthesisUtterance(text);
-            ut.lang = 'ja-JP';
-            window.speechSynthesis.speak(ut);
+            });
+            document.getElementById('btn').style.display = 'none';
+            document.getElementById('status').innerText = "ジャンプしてください";
+            isMeasuring = true;
         }
     </script>
 </body>
