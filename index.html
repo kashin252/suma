@@ -3,224 +3,551 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>垂直飛び測定 (高精度版・白背景)</title>
+    <title>垂直跳び測定 </title>
     <style>
+        :root {
+            --primary: #007AFF;
+            --bg-gradient-from: #0f172a;
+            --bg-gradient-to: #1e293b;
+            --card-bg: rgba(15, 23, 42, 0.85);
+            --accent: #22d3ee;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: sans-serif;
-            text-align: center;
-            background-color: #ffffff;
-            color: #000000;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            margin: 0;
+            min-height: 100vh;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
+            background: radial-gradient(circle at top left, #1e293b 0, #020617 50%, #000 100%);
+            color: #e5e7eb;
+            padding: 16px;
         }
-        #height-display {
-            font-size: 80px;
-            font-weight: bold;
-            color: #007AFF;
+
+        .card {
+            width: 100%;
+            max-width: 720px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 24px 20px 20px;
+            box-shadow:
+                0 24px 60px rgba(0, 0, 0, 0.65),
+                0 0 0 1px rgba(148, 163, 184, 0.15);
+            backdrop-filter: blur(18px);
         }
-        button {
-            padding: 20px 40px;
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        h1 {
             font-size: 20px;
-            background-color: #000;
-            color: #fff;
-            border-radius: 10px;
-            margin-top: 20px;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        h1::before {
+            content: "";
+            width: 20px;
+            height: 20px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 30% 30%, var(--accent), var(--primary));
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.8);
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            color: #9ca3af;
+        }
+
+        #status {
+            margin-top: 4px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+
+        .center-row {
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            gap: 8px;
+            margin: 12px 0 4px;
+        }
+
+        #height-display {
+            font-size: 64px;
+            font-weight: 700;
+            color: var(--accent);
+            text-shadow: 0 0 20px rgba(56, 189, 248, 0.45);
+        }
+
+        .unit {
+            font-size: 20px;
+            color: #9ca3af;
+        }
+
+        .sub-label {
+            font-size: 11px;
+            color: #6b7280;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        button {
+            padding: 12px 26px;
+            font-size: 15px;
+            border-radius: 999px;
             border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, var(--primary), #38bdf8);
+            color: white;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow:
+                0 12px 30px rgba(59, 130, 246, 0.45),
+                0 0 0 1px rgba(191, 219, 254, 0.4);
+            margin: 4px auto 12px;
         }
+
+        button span.icon {
+            display: inline-flex;
+            width: 18px;
+            height: 18px;
+            border-radius: 999px;
+            border: 1px solid rgba(248, 250, 252, 0.3);
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+
+        button:active {
+            transform: translateY(1px) scale(0.99);
+            box-shadow:
+                0 4px 18px rgba(59, 130, 246, 0.35),
+                0 0 0 1px rgba(191, 219, 254, 0.4);
+        }
+
         .slider-area {
-            margin-top: 30px;
-            width: 80%;
-            background: #eee;
-            padding: 10px;
-            border-radius: 10px;
+            margin-top: 10px;
+            padding: 10px 12px 4px;
+            border-radius: 16px;
+            background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.18), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(148, 163, 184, 0.6);
         }
+
+        .slider-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #e5e7eb;
+            margin-bottom: 4px;
+        }
+
+        #val {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
         input[type="range"] {
             width: 100%;
+            -webkit-appearance: none;
+            height: 4px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.9);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #f9fafb, #e5e7eb);
+            border: 2px solid var(--accent);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.9);
+            cursor: pointer;
+            margin-top: -7px;
+        }
+
+        .slider-help {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 3px;
+        }
+
+        .wave-wrapper {
+            margin-top: 14px;
+            border-radius: 16px;
+            padding: 10px 10px 8px;
+            background: radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(148, 163, 184, 0.6);
+        }
+
+        .wave-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+
+        #waveCanvas {
+            width: 100%;
+            max-width: 100%;
+            border-radius: 10px;
+            background: radial-gradient(circle at bottom, #020617, #020617 40%, #020617 100%);
+            display: block;
+        }
+
+        .legend {
+            display: flex;
+            gap: 10px;
+            font-size: 10px;
+            margin-top: 4px;
+            color: #6b7280;
+        }
+
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 2px;
+            border-radius: 999px;
+        }
+
+        .legend-dot.wave {
+            background: #38bdf8;
+        }
+
+        .legend-dot.base {
+            background: #4ade80;
+        }
+
+        .legend-dot.th {
+            background: #f97316;
+        }
+
+        .hint {
+            font-size: 10px;
+            color: #6b7280;
+            margin-top: 8px;
+            text-align: right;
+        }
+
+        @media (max-width: 480px) {
+            #height-display {
+                font-size: 48px;
+            }
+            .card {
+                padding: 18px 14px 14px;
+                border-radius: 20px;
+            }
         }
     </style>
 </head>
 <body>
-
-    <h1>垂直飛び測定 (高精度版・白背景)</h1>
-    <div id="status">スタートボタンを押して下さい</div>
-
-    <div>
-        <span id="height-display">0.0</span> cm
+<div class="card">
+    <div class="card-header">
+        <h1>垂直飛び測定</h1>
+        <div class="badge">v2.0 High Precision</div>
     </div>
 
-    <button onclick="initApp()" id="btn">スタート</button>
+    <div id="status">スタートボタンを押して下さい</div>
+
+    <div class="center-row">
+        <span id="height-display">0.0</span>
+        <span class="unit">cm</span>
+    </div>
+    <div class="sub-label">飛行時間から物理計算で高さを推定</div>
+
+    <div style="text-align:center;">
+        <button onclick="initApp()" id="btn">
+            <span class="icon">▶</span>
+            <span>測定スタート</span>
+        </button>
+    </div>
 
     <div class="slider-area">
-        精度調整: <span id="val">90</span>%<br>
+        <div class="slider-label-row">
+            <span>補正（実測とのズレ調整）</span>
+            <span><span id="val">90</span>%</span>
+        </div>
         <input type="range" id="slider" min="70" max="120" value="90"
                oninput="document.getElementById('val').innerText=this.value">
-        <div style="font-size: 12px; margin-top: 4px;">
-            実測より高く出る場合は下げる / 低く出る場合は上げる
+        <div class="slider-help">
+            数字を下げる：実際より高く出る / 上げる：実際より低く出る
         </div>
     </div>
 
-    <script>
-        // 状態管理用
-        let state = "idle"; // idle, calibrating, ready, inAir, waitNext
-        let baselineG = 9.8;   // 静止時の加速度の大きさ（キャリブレーションで更新）
-        let filteredMag = 9.8; // 平滑化した加速度
-        let takeoffTime = 0;
-        let lastLandingTime = 0;
-        let calibrationSamples = [];
-        let motionInitialized = false;
+    <div class="wave-wrapper">
+        <div class="wave-header">
+            <span>加速度波形（フィルタ後）</span>
+            <span>スマホは胸の前でしっかり固定</span>
+        </div>
+        <canvas id="waveCanvas" width="640" height="200"></canvas>
+        <div class="legend">
+            <div class="legend-item">
+                <span class="legend-dot wave"></span> 加速度
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot base"></span> 静止時(重力)
+            </div>
+            <div class="legend-item">
+                <span class="legend-dot th"></span> 離地/着地しきい値
+            </div>
+        </div>
+        <div class="hint">※ 波形が大きく谷→山になっているときにジャンプが検出されています</div>
+    </div>
+</div>
 
-        // 閾値（baselineGを元に動的に決める）
-        let takeoffThreshold = 5.0;  // baselineG * 0.6 くらい
-        let landingThreshold = 13.0; // baselineG * 1.3 くらい
+<script>
+    // ====== 状態管理・物理パラメータ ======
+    let state = "idle"; // idle, calibrating, ready, inAir, waitNext
+    let baselineG = 9.8;
+    let filteredMag = 9.8;
+    let takeoffTime = 0;
+    let lastLandingTime = 0;
+    let calibrationSamples = [];
+    let motionInitialized = false;
 
-        const ALPHA = 0.8; // 平滑化用係数（大きいほど滑らか＆遅い）
+    // 閾値（baselineGベースで後から決定）
+    let takeoffThreshold = 5.0;
+    let landingThreshold = 13.0;
 
-        function initApp() {
-            // 音声用ハック（iOS向け）
-            let ut = new SpeechSynthesisUtterance(" ");
-            window.speechSynthesis.speak(ut);
+    const ALPHA = 0.8; // ローパスフィルタ係数
 
-            // ボタンは一旦隠す
-            document.getElementById('btn').style.display = 'none';
+    // ====== 波形描画用 ======
+    const MAX_POINTS = 200;
+    let waveData = []; // filteredMagの履歴
 
-            if (typeof DeviceMotionEvent !== 'undefined' &&
-                typeof DeviceMotionEvent.requestPermission === 'function') {
+    function initApp() {
+        // 音声初期化（iOS対策）
+        let ut = new SpeechSynthesisUtterance(" ");
+        window.speechSynthesis.speak(ut);
 
-                DeviceMotionEvent.requestPermission().then(s => {
-                    if (s === 'granted') {
-                        startSensor();
-                        startCalibration();
-                    } else {
-                        alert("センサーを許可してください（設定 > Safari > モーションと画面の向き）");
-                        document.getElementById('btn').style.display = 'inline-block';
-                    }
-                });
-            } else {
-                // Android など permission 不要な場合
-                startSensor();
-                startCalibration();
-            }
-        }
+        document.getElementById('btn').style.display = 'none';
 
-        function startSensor() {
-            if (motionInitialized) return;
-            window.addEventListener('devicemotion', onMotion);
-            motionInitialized = true;
-        }
-
-        function startCalibration() {
-            state = "calibrating";
-            calibrationSamples = [];
-            document.getElementById('status').innerText =
-                "キャリブレーション中... 1秒ほどまっすぐ立ってください";
-
-            // 念のため2秒後に強制的に終了させる保険
-            setTimeout(() => {
-                if (state === "calibrating") {
-                    finishCalibration();
+        if (typeof DeviceMotionEvent !== 'undefined' &&
+            typeof DeviceMotionEvent.requestPermission === 'function') {
+            DeviceMotionEvent.requestPermission().then(s => {
+                if (s === 'granted') {
+                    startSensor();
+                    startCalibration();
+                } else {
+                    alert("センサーを許可してください（設定 > Safari > モーションと画面の向き）");
+                    document.getElementById('btn').style.display = 'inline-block';
                 }
-            }, 2000);
+            });
+        } else {
+            startSensor();
+            startCalibration();
         }
+    }
 
-        function finishCalibration() {
-            if (calibrationSamples.length > 0) {
-                let sum = 0;
-                for (let v of calibrationSamples) sum += v;
-                baselineG = sum / calibrationSamples.length;
-            } else {
-                baselineG = 9.8; // 取れなかった場合はデフォルト
-            }
+    function startSensor() {
+        if (motionInitialized) return;
+        window.addEventListener('devicemotion', onMotion);
+        motionInitialized = true;
+    }
 
-            filteredMag = baselineG;
+    function startCalibration() {
+        state = "calibrating";
+        calibrationSamples = [];
+        document.getElementById('status').innerText =
+            "キャリブレーション中... 1秒ほどじっと立ってください";
 
-            // 閾値を baseline から決定（端末差を吸収）
-            takeoffThreshold  = baselineG * 0.6;  // 重力の60%以下 → 離地
-            landingThreshold  = baselineG * 1.3;  // 重力の130%以上 → 着地
-
-            state = "ready";
-            document.getElementById('status').innerText =
-                "準備完了！ジャンプしてください（スマホは胸あたりでしっかり固定）";
-        }
-
-        function onMotion(e) {
-            // センサー値が取れない端末は何もしない
-            const acc = e.accelerationIncludingGravity || e.acceleration;
-            if (!acc) return;
-
-            const ax = acc.x || 0;
-            const ay = acc.y || 0;
-            const az = acc.z || 0;
-
-            // 3軸ベクトルの大きさ
-            const mag = Math.sqrt(ax*ax + ay*ay + az*az);
-
-            // ローパスフィルタで平滑化
-            filteredMag = ALPHA * filteredMag + (1 - ALPHA) * mag;
-
-            // キャリブレーション中はサンプルを貯める
+        // 2秒たっても十分取れなかったとき用の保険
+        setTimeout(() => {
             if (state === "calibrating") {
-                calibrationSamples.push(mag);
-                if (calibrationSamples.length >= 40) { // 約1秒分想定
-                    finishCalibration();
-                }
-                return;
+                finishCalibration();
             }
+        }, 2000);
+    }
 
-            // ここからは状態機械でジャンプを検出
-            const now = performance.now();
+    function finishCalibration() {
+        if (calibrationSamples.length > 0) {
+            let sum = 0;
+            for (let v of calibrationSamples) sum += v;
+            baselineG = sum / calibrationSamples.length;
+        } else {
+            baselineG = 9.8;
+        }
 
-            if (state === "ready") {
-                // 離地検出：重力よりかなり小さくなった瞬間
-                if (filteredMag < takeoffThreshold) {
-                    state = "inAir";
-                    takeoffTime = now;
-                    document.getElementById('status').innerText = "空中判定中...";
-                }
-            } else if (state === "inAir") {
-                // 着地検出：重力よりかなり大きくなった瞬間
-                if (filteredMag > landingThreshold) {
-                    const flightTime = (now - takeoffTime) / 1000; // 秒
+        filteredMag = baselineG;
 
-                    // 異常値を除外（短すぎ / 長すぎ）
-                    if (flightTime > 0.15 && flightTime < 1.5) {
-                        const sliderRate =
-                            Number(document.getElementById('slider').value) / 100;
+        takeoffThreshold = baselineG * 0.6; // 下に大きく谷→離地
+        landingThreshold = baselineG * 1.3; // 上に大きく山→着地
 
-                        // 物理式：h(cm) ≒ 122.6 * t^2
-                        let h = 122.6 * flightTime * flightTime * sliderRate;
+        state = "ready";
+        document.getElementById('status').innerText =
+            "準備完了！スマホを胸の前で固定してジャンプしてください";
+    }
 
-                        document.getElementById('height-display').innerText = h.toFixed(1);
+    function onMotion(e) {
+        const acc = e.accelerationIncludingGravity || e.acceleration;
+        if (!acc) return;
 
-                        // 音声出力（整数cmで読み上げ）
-                        let ut = new SpeechSynthesisUtterance(
-                            h.toFixed(0) + "センチです"
-                        );
-                        window.speechSynthesis.speak(ut);
+        const ax = acc.x || 0;
+        const ay = acc.y || 0;
+        const az = acc.z || 0;
 
-                        lastLandingTime = now;
-                        state = "waitNext";
-                        document.getElementById('status').innerText =
-                            "計測完了！ もう一度測るには少し待ってください";
+        const mag = Math.sqrt(ax*ax + ay*ay + az*az);
+        filteredMag = ALPHA * filteredMag + (1 - ALPHA) * mag;
 
-                        // 1.5秒後に次のジャンプ待ちに遷移
-                        setTimeout(() => {
-                            state = "ready";
-                            document.getElementById('status').innerText =
-                                "準備OK！もう一度ジャンプしてください";
-                        }, 1500);
-                    } else {
-                        // 異常値の場合はリセットして再挑戦
+        // 波形用データ更新
+        waveData.push(filteredMag);
+        if (waveData.length > MAX_POINTS) waveData.shift();
+        drawWaveform();
+
+        if (state === "calibrating") {
+            calibrationSamples.push(mag);
+            if (calibrationSamples.length >= 40) {
+                finishCalibration();
+            }
+            return;
+        }
+
+        const now = performance.now();
+
+        if (state === "ready") {
+            if (filteredMag < takeoffThreshold) {
+                state = "inAir";
+                takeoffTime = now;
+                document.getElementById('status').innerText = "空中検出中...";
+            }
+        } else if (state === "inAir") {
+            if (filteredMag > landingThreshold) {
+                const flightTime = (now - takeoffTime) / 1000;
+
+                if (flightTime > 0.15 && flightTime < 1.5) {
+                    const sliderRate =
+                        Number(document.getElementById('slider').value) / 100;
+
+                    let h = 122.6 * flightTime * flightTime * sliderRate;
+
+                    document.getElementById('height-display').innerText = h.toFixed(1);
+
+                    let ut = new SpeechSynthesisUtterance(
+                        h.toFixed(0) + "センチです"
+                    );
+                    window.speechSynthesis.speak(ut);
+
+                    lastLandingTime = now;
+                    state = "waitNext";
+                    document.getElementById('status').innerText =
+                        "計測完了！ 1～2秒後に次のジャンプが測定できます";
+
+                    setTimeout(() => {
                         state = "ready";
                         document.getElementById('status').innerText =
-                            "うまく検出できませんでした。もう一度ジャンプしてください";
-                    }
+                            "準備OK！ もう一度ジャンプしてください";
+                    }, 1500);
+                } else {
+                    state = "ready";
+                    document.getElementById('status').innerText =
+                        "うまく検出できませんでした。もう一度ジャンプしてください";
                 }
             }
         }
-    </script>
+    }
+
+    function drawWaveform() {
+        const canvas = document.getElementById('waveCanvas');
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        if (waveData.length < 2) return;
+
+        const marginTop = 6;
+        const marginBottom = 6;
+
+        const minVal = baselineG * 0.2;
+        const maxVal = baselineG * 2.0;
+
+        const range = Math.max(maxVal - minVal, 0.001);
+
+        function yFromVal(v) {
+            const ratio = (v - minVal) / range;
+            return h - (marginBottom + (h - marginTop - marginBottom) * ratio);
+        }
+
+        // 背景グリッド
+        ctx.save();
+        ctx.strokeStyle = "rgba(148, 163, 184, 0.2)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+
+        // baseline
+        const baseY = yFromVal(baselineG);
+        ctx.beginPath();
+        ctx.moveTo(0, baseY);
+        ctx.lineTo(w, baseY);
+        ctx.stroke();
+
+        // takeoff / landing threshold
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.5)";
+        const toY = yFromVal(takeoffThreshold);
+        const laY = yFromVal(landingThreshold);
+
+        ctx.beginPath();
+        ctx.moveTo(0, toY);
+        ctx.lineTo(w, toY);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, laY);
+        ctx.lineTo(w, laY);
+        ctx.stroke();
+
+        ctx.restore();
+
+        // 波形本体
+        ctx.save();
+        ctx.lineWidth = 2;
+        const grad = ctx.createLinearGradient(0, 0, w, 0);
+        grad.addColorStop(0, "#22d3ee");
+        grad.addColorStop(1, "#3b82f6");
+        ctx.strokeStyle = grad;
+
+        ctx.beginPath();
+        for (let i = 0; i < waveData.length; i++) {
+            const x = (i / (MAX_POINTS - 1)) * w;
+            const y = yFromVal(waveData[i]);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.restore();
+    }
+</script>
 </body>
 </html>
