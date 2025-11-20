@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>垂直飛び測定器</title>
+    <title>垂直飛び測定器 Ver.2</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -18,153 +17,200 @@
             margin: 0;
             touch-action: manipulation;
         }
-
-        h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-
+        h1 { font-size: 20px; margin-bottom: 10px; color: #ddd; }
         #height-display {
             font-size: 80px;
             font-weight: bold;
             color: #00ffcc;
-            margin: 20px 0;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
         }
-
-        .unit {
-            font-size: 30px;
-            color: #888;
-        }
-
+        .unit { font-size: 30px; color: #888; }
         #status {
             font-size: 18px;
             color: #aaa;
             height: 30px;
+            margin-bottom: 20px;
         }
-
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
         button {
-            padding: 15px 30px;
+            padding: 15px 40px;
             font-size: 20px;
-            background-color: #444;
+            font-weight: bold;
+            background-color: #007AFF;
             color: white;
-            border: 2px solid #fff;
+            border: none;
             border-radius: 50px;
             cursor: pointer;
-            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); background-color: #0066d6; }
+        
+        /* 音声スイッチのデザイン */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            font-size: 16px;
+            color: #ccc;
+        }
+        input[type="checkbox"] {
+            transform: scale(1.5);
+            margin-right: 10px;
         }
 
-        button:active {
-            background-color: #666;
-        }
-
-        .debug {
-            font-size: 12px;
-            color: #555;
-            margin-top: 20px;
-        }
+        .debug { font-size: 12px; color: #555; margin-top: 30px; font-family: monospace;}
     </style>
 </head>
-
 <body>
 
-    <h1>垂直飛び測定</h1>
+    <h1>垂直飛び測定 Ver.2</h1>
     <div id="status">準備完了</div>
-
+    
     <div>
         <span id="height-display">0.0</span>
         <span class="unit">cm</span>
     </div>
 
-    <button id="start-btn" onclick="requestPermission()">測定スタート</button>
-
-    <div class="debug" id="debug-info">加速度: 0</div>
+    <div class="controls">
+        <button id="start-btn" onclick="initApp()">測定スタート</button>
+        
+        <div class="toggle-container">
+            <label>
+                <input type="checkbox" id="sound-toggle" checked>
+                音声読み上げ ON
+            </label>
+        </div>
+    </div>
+    
+    <div class="debug" id="debug-info">ACC: 0.00 (Raw) / 0.00 (Filtered)</div>
 
     <script>
         let isMeasuring = false;
         let inAir = false;
         let flightStartTime = 0;
-        let maxFlightTime = 0;
-
+        
+        // フィルタ用変数
+        let filteredAcc = 9.8; // 重力加速度で初期化
+        const ALPHA = 0.8; // フィルタ係数 (0.1:滑らか 〜 1.0:敏感)
+        
+        // DOM要素
         const STATUS = document.getElementById('status');
         const DISPLAY = document.getElementById('height-display');
         const DEBUG = document.getElementById('debug-info');
         const BTN = document.getElementById('start-btn');
+        const SOUND_TOGGLE = document.getElementById('sound-toggle');
 
-        // iOS13+のためのセンサー許可リクエスト
-        function requestPermission() {
+        // アプリ初期化（権限リクエストと音声エンジンの準備）
+        function initApp() {
+            // 音声エンジンのロック解除（iOS対策で無音を一度再生）
+            speakText("測定を開始します");
+
             if (typeof DeviceMotionEvent.requestPermission === 'function') {
                 DeviceMotionEvent.requestPermission()
                     .then(permissionState => {
                         if (permissionState === 'granted') {
                             startSensor();
                         } else {
-                            alert("センサーの使用が許可されませんでした");
+                            alert("センサー許可が必要です。ブラウザを再読み込みしてください。");
                         }
                     })
-                    .catch(console.error);
+                    .catch(e => alert(e));
             } else {
-                // Androidなどはそのまま開始
                 startSensor();
             }
         }
 
         function startSensor() {
             window.addEventListener('devicemotion', handleMotion);
-            BTN.style.display = 'none'; // ボタンを隠す
-            STATUS.innerText = "スマホを持ってジャンプ！";
+            BTN.style.display = 'none';
+            STATUS.innerText = "ポケットに入れてジャンプ！";
             isMeasuring = true;
         }
 
         function handleMotion(event) {
             if (!isMeasuring) return;
 
-            // X, Y, Z の加速度を取得（重力加速度を含む）
             let acc = event.accelerationIncludingGravity;
             if (!acc) return;
 
-            // 合成加速度ベクトルを計算 (ピタゴラスの定理)
-            let magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+            // 生の合成加速度
+            let rawMagnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
 
-            DEBUG.innerText = `加速度: ${magnitude.toFixed(2)}`;
+            // ■ 1. ローパスフィルタ処理 (簡易移動平均)
+            // 現在の値 = 前回の値 * (1-α) + 今回の値 * α
+            // 急激なスパイク（ノイズ）を少しマイルドにします
+            filteredAcc = filteredAcc * (1 - ALPHA) + rawMagnitude * ALPHA;
 
-            // 判定ロジック
-            // 1. 自由落下 (空中にいる) 判定: 重力(約9.8)がなくなり、0に近づく
-            if (magnitude < 3.0 && !inAir) {
+            DEBUG.innerText = `Raw: ${rawMagnitude.toFixed(1)} / Filter: ${filteredAcc.toFixed(1)}`;
+
+            // ■ 2. 判定ロジック (フィルタ済みの値を使用)
+            
+            // 滞空判定 (重力 9.8 がほぼなくなる状態)
+            // フィルタを通すため、閾値を少し甘めに設定 (3.0 -> 4.0)
+            if (filteredAcc < 4.0 && !inAir) {
                 inAir = true;
                 flightStartTime = Date.now();
-                STATUS.innerText = "ジャンプ中...";
+                STATUS.innerText = "Flying!!";
                 STATUS.style.color = "yellow";
             }
 
-            // 2. 着地判定: 地面につくと強い衝撃（G）がかかる
-            if (magnitude > 18.0 && inAir) {
-                let flightEndTime = Date.now();
-                let duration = (flightEndTime - flightStartTime) / 1000; // 秒に変換
+            // 着地判定 (強い衝撃)
+            // フィルタを通しても強い衝撃は残るが、誤検知を防ぐため閾値調整
+            if (filteredAcc > 16.0 && inAir) {
+                let now = Date.now();
+                let duration = (now - flightStartTime) / 1000;
 
-                // あまりに短い/長い時間はノイズとして除外 (0.1秒〜1.5秒)
-                if (duration > 0.1 && duration < 1.5) {
+                // 短すぎる(0.15秒未満)、長すぎる(1.5秒以上)はエラー
+                if (duration > 0.15 && duration < 1.5) {
                     calculateHeight(duration);
                 } else {
-                    STATUS.innerText = "エラー：再計測してください";
-                    STATUS.style.color = "red";
+                    // ノイズだった場合、状態をリセット
+                    inAir = false;
+                    STATUS.innerText = "再計測中...";
+                    STATUS.style.color = "#aaa";
                 }
-
-                inAir = false;
             }
         }
 
         function calculateHeight(time) {
-            // 物理公式: h = 1/8 * g * t^2
-            // g = 9.80665, 結果をcmにするので * 100
-            // 係数は 約 122.6
+            // 計測を一時停止（連続反応を防ぐ）
+            isMeasuring = false;
+            inAir = false;
 
+            // 高さ計算 h = 122.6 * t^2
             let height = 122.6 * Math.pow(time, 2);
-
-            DISPLAY.innerText = height.toFixed(1);
+            let resultText = height.toFixed(1);
+            
+            DISPLAY.innerText = resultText;
             STATUS.innerText = `滞空時間: ${time.toFixed(3)}秒`;
             STATUS.style.color = "#00ffcc";
+
+            // ■ 3. 音声フィードバック
+            speakText(resultText + "センチ");
+
+            // 2秒後に計測再開
+            setTimeout(() => {
+                isMeasuring = true;
+                STATUS.innerText = "次のジャンプへ";
+                STATUS.style.color = "#fff";
+            }, 2000);
+        }
+
+        // 音声読み上げ関数
+        function speakText(text) {
+            if (!SOUND_TOGGLE.checked) return;
+
+            // ブラウザの音声合成機能を利用
+            const ut = new SpeechSynthesisUtterance(text);
+            ut.lang = 'ja-JP'; // 日本語設定
+            ut.rate = 1.0;     // 速度
+            window.speechSynthesis.speak(ut);
         }
     </script>
 </body>
-
 </html>
